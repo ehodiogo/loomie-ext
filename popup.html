@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LoomieCRM — Config</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="popup-card">
+
+    <img src="assets/logo-loomie.png" alt="Loomie" class="logo"/>
+
+    <div class="header-row">
+      <h1 class="title">LoomieCRM</h1>
+      <div id="statusBadge" class="badge status-unknown" title="Status da conexão"></div>
+    </div>
+
+    <div class="controls">
+      <label class="label">API Key</label>
+      <div class="api-row">
+        <input id="apiKey" type="password" placeholder="Cole sua API Key" autocomplete="off" />
+        <button id="toggleKey" class="icon-btn" title="Mostrar/ocultar chave">👁️</button>
+        <button id="copyKey" class="icon-btn" title="Copiar chave">📋</button>
+      </div>
+
+      <div class="row actions-row">
+        <button id="saveBtn" class="btn primary">Salvar</button>
+        <button id="testBtn" class="btn secondary">Testar Conexão</button>
+      </div>
+
+      <div class="row small-row">
+        <button id="showLogsBtn" class="btn ghost">Ver Logs</button>
+        <button id="clearLogsBtn" class="btn ghost">Limpar Logs</button>
+      </div>
+
+      <div id="statusText" class="status">Nenhuma ação ainda.</div>
+    </div>
+
+    <div id="logsArea" class="logs-area" hidden>
+      <div class="logs-controls">
+        <input id="logsFilter" class="logs-filter" placeholder="Filtrar logs (mensagem)..." />
+        <div class="filter-buttons">
+          <button data-filter="all" class="filter-btn active">Todos</button>
+          <button data-filter="ok" class="filter-btn">Sucesso</button>
+          <button data-filter="fail" class="filter-btn">Erro</button>
+        </div>
+      </div>
+      <div id="logsContainer" class="logs-container"></div>
+    </div>
+
+    <div class="theme-row">
+      <label for="themeSelect" class="label small">Tema</label>
+      <select id="themeSelect" class="theme-select" title="Tema">
+        <option value="auto">Automático</option>
+        <option value="light">Claro</option>
+        <option value="dark">Escuro</option>
+      </select>
+    </div>
+
+    <footer class="footer">v1 • LoomieCRM</footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

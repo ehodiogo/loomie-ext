@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "LoomieCRM Extension",
+  "version": "1.0.0",
+  "description": "Integração com LoomieCRM — detectar e enviar e-mails/telefones ao CRM.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["https://backend.loomiecrm.com/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "assets/logo-loomie.png",
+      "48": "assets/logo-loomie.png",
+      "128": "assets/logo-loomie.png"
+    }
+  },
+  "background": {
+    "service_worker": "api.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*/*", "http://*/*"],
+      "js": ["content.js"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/logo-loomie.png"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
