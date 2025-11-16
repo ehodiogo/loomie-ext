@@ -214,9 +214,7 @@ function scanPage() {
   scanTimer = setTimeout(() => {
     try {
       walkAndProcess(document.body);
-      addLog("scanPage executado", true);
     } catch (err) {
-      addLog("scanPage erro: " + err?.message, false);
     }
   }, 120);
 }
