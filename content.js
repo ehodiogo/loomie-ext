@@ -19,7 +19,7 @@ function addLog(msg, ok = true) {
       chrome.storage.local.set({ loomie_logs: arr });
     });
   } catch (e) {}
-  console.log("[LoomieCRM]", msg);
+  console.log("[LoomieCRM CONTENT.JS]", msg);
 }
 
 function escapeHtml(str) {
@@ -120,29 +120,35 @@ function openConfirmModal(value) {
     const email = modal.querySelector("#loomie-email").value.trim();
     const phone = modal.querySelector("#loomie-phone").value.trim();
 
-    const payload = { nome: name, email: email, telefone: phone };
+    const payload = { nome: name, email, telefone: phone };
 
-    chrome.runtime.sendMessage(
-      { action: "sendData", payload: payload },
-      (response) => {
+    chrome.runtime.sendMessage({ action: "sendData", payload }, (response) => {
+      if (response?.ok) {
         modal.querySelector(".loomie-modal-card").innerHTML =
           "<h3>Enviado ✔️</h3>";
-
         setTimeout(() => {
           modal.remove();
-          openAskPipelineModal(response?.contactId || null);
+          openAskPipelineModal(response?.id || null);
         }, 800);
-
         addLog("Enviado para CRM: " + JSON.stringify(payload), true);
+        addLog("Resposta: " + JSON.stringify(response), true);
+        addLog("Contato criado com ID: " + response?.id, true);
+      } else {
+        modal.querySelector(
+          ".loomie-modal-card"
+        ).innerHTML = `<h3>Falha ao enviar ❌</h3><p>${
+          response?.message || "Erro desconhecido"
+        }</p>`;
+        addLog("Falha ao enviar para CRM: " + JSON.stringify(response), false);
       }
-    );
+    });
   };
 }
 
 // ====================================================================
 // MODAL “DESEJA ADICIONAR AO PIPELINE?”
 // ====================================================================
-function openAskPipelineModal(contactId) {
+function openAskPipelineModal(id) {
   const modal = document.createElement("div");
   modal.className = "loomie-modal-root";
 
@@ -165,14 +171,14 @@ function openAskPipelineModal(contactId) {
 
   modal.querySelector("#pipeline-yes").onclick = () => {
     modal.remove();
-    openPipelineModal(contactId);
+    openPipelineModal(id);
   };
 }
 
 // ====================================================================
-// MODAL SELEÇÃO DE PIPELINE + ESTÁGIO
+// MODAL SELEÇÃO DE PIPELINE + ESTÁGIO + NEGÓCIO
 // ====================================================================
-function openPipelineModal(contactId) {
+function openPipelineModal(id) {
   const modal = document.createElement("div");
   modal.className = "loomie-modal-root";
 
@@ -193,6 +199,14 @@ function openPipelineModal(contactId) {
         </select>
       </label>
 
+      <label>Título do Negócio:
+        <input type="text" id="deal-title" placeholder="Ex: Negócio teste">
+      </label>
+
+      <label>Valor do Negócio:
+        <input type="number" id="deal-value" placeholder="1000">
+      </label>
+
       <div class="loomie-buttons">
         <button id="pipeline-save" class="loomie-btn-primary">Salvar</button>
         <button id="pipeline-cancel" class="loomie-btn-secondary">Cancelar</button>
@@ -205,11 +219,9 @@ function openPipelineModal(contactId) {
   const pipelineSelect = modal.querySelector("#loomie-pipeline");
   const stageSelect = modal.querySelector("#loomie-stage");
 
-  // Buscar pipelines
   chrome.runtime.sendMessage({ action: "getPipelines" }, (pipelines) => {
     pipelineSelect.innerHTML = `<option value="">Selecione...</option>`;
-
-    pipelines?.forEach((p) => {
+    pipelines.forEach((p) => {
       pipelineSelect.innerHTML += `<option value="${p.id}">${p.nome}</option>`;
     });
   });
@@ -217,7 +229,6 @@ function openPipelineModal(contactId) {
   pipelineSelect.onchange = () => {
     const pid = pipelineSelect.value;
     if (!pid) return;
-
     stageSelect.innerHTML = `<option>Carregando...</option>`;
 
     chrome.runtime.sendMessage(
@@ -234,12 +245,50 @@ function openPipelineModal(contactId) {
   modal.querySelector("#pipeline-save").onclick = () => {
     const pipelineId = pipelineSelect.value;
     const stageId = stageSelect.value;
+    const dealTitle = modal.querySelector("#deal-title").value.trim();
+    const dealValue = parseFloat(modal.querySelector("#deal-value").value || 0);
+
+    if (!pipelineId || !stageId || !id) {
+      return addLog(
+        "Selecione pipeline, estágio e contato antes de salvar",
+        false
+      );
+    }
+
+    if (!dealTitle) {
+      return addLog("Informe o título do negócio", false);
+    }
+
+    // Criar negócio (já adiciona contato ao pipeline e estágio)
+    const payload = {
+      pipelineId: pipelineId,
+      stageId: stageId,
+      contactId: id,
+      titulo: dealTitle,
+      valor: dealValue,
+    };
 
     chrome.runtime.sendMessage(
-      { action: "assignPipeline", contactId, pipelineId, stageId },
-      () => {
-        modal.querySelector(".loomie-modal-card").innerHTML =
-          "<h3>Adicionado ao pipeline ✔️</h3>";
+      {
+        action: "createDeal",
+        payload
+      },
+      (resDeal) => {
+        if (resDeal?.ok) {
+          addLog("Negócio criado ✔️");
+          modal.querySelector(".loomie-modal-card").innerHTML =
+            "<h3>Operação concluída ✔️</h3>";
+        } else {
+          addLog(
+            "Falha ao criar negócio ❌: " + (resDeal?.message || ""),
+            false
+          );
+          modal.querySelector(
+            ".loomie-modal-card"
+          ).innerHTML = `<h3>Falha ao criar negócio ❌</h3><p>${
+            resDeal?.message || ""
+          }</p>`;
+        }
 
         setTimeout(() => modal.remove(), 800);
       }
@@ -250,10 +299,8 @@ function openPipelineModal(contactId) {
 }
 
 // ====================================================================
-// PROCESSAMENTO DO TEXTO, REGEX, OBSERVER…
-// (TODO IGUAL AO SEU SCRIPT ORIGINAL — NÃO ALTEREI NADA)
+// PROCESSAMENTO DO TEXTO
 // ====================================================================
-
 function processTextNode(textNode) {
   const parent = textNode.parentNode;
   if (!parent) return;
