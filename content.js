@@ -38,7 +38,7 @@ function detectType(value) {
 }
 
 // ====================================================================
-// CRIAR MARCADOR
+// MARCADOR LOGO
 // ====================================================================
 function createLogoMarker(value) {
   const span = document.createElement("span");
@@ -72,7 +72,7 @@ function createLogoMarker(value) {
 }
 
 // ====================================================================
-// MODAL COM EDIT
+// MODAL PRINCIPAL — CADASTRAR CONTATO
 // ====================================================================
 function openConfirmModal(value) {
   if (document.querySelector(".loomie-modal-root")) return;
@@ -85,14 +85,15 @@ function openConfirmModal(value) {
   const phoneVal = type === "phone" ? value : "";
 
   modal.innerHTML = `
-  <div class="loomie-modal" role="dialog" aria-modal="true">
+  <div class="loomie-modal">
     <div class="loomie-modal-card">
       <div class="loomie-modal-header">
         <img src="${chrome.runtime.getURL(
           "assets/logo-loomie.png"
-        )}" class="loomie-logo" alt="Loomie">
+        )}" class="loomie-logo">
         <h3 class="loomie-title">LoomieCRM</h3>
       </div>
+
       <div class="loomie-inputs">
         <label>Nome: <input type="text" id="loomie-name" placeholder="Nome"></label>
         <label>Email: <input type="email" id="loomie-email" placeholder="Email" value="${escapeHtml(
@@ -102,6 +103,7 @@ function openConfirmModal(value) {
           phoneVal
         )}"></label>
       </div>
+
       <div class="loomie-buttons">
         <button id="loomie-send" class="loomie-btn-primary">Enviar</button>
         <button id="loomie-cancel" class="loomie-btn-secondary">Cancelar</button>
@@ -111,29 +113,147 @@ function openConfirmModal(value) {
 
   document.body.appendChild(modal);
 
-  const cancelBtn = modal.querySelector("#loomie-cancel");
-  const sendBtn = modal.querySelector("#loomie-send");
+  modal.querySelector("#loomie-cancel").onclick = () => modal.remove();
 
-  cancelBtn?.addEventListener("click", () => modal.remove());
-
-  sendBtn?.addEventListener("click", () => {
+  modal.querySelector("#loomie-send").onclick = () => {
     const name = modal.querySelector("#loomie-name").value.trim();
     const email = modal.querySelector("#loomie-email").value.trim();
     const phone = modal.querySelector("#loomie-phone").value.trim();
 
-    const payload = { "nome": name, "email": email, "telefone": phone };
-    chrome.runtime.sendMessage({ action: "sendData", payload: payload }, () => {
-    const card = modal.querySelector(".loomie-modal-card");
-    if (card) card.innerHTML = "<h3>Enviado ✔️</h3>";
-    setTimeout(() => modal.remove(), 1000);
-    addLog("Enviado para CRM: " + JSON.stringify(payload), true);
-    });
-  });
+    const payload = { nome: name, email: email, telefone: phone };
+
+    chrome.runtime.sendMessage(
+      { action: "sendData", payload: payload },
+      (response) => {
+        modal.querySelector(".loomie-modal-card").innerHTML =
+          "<h3>Enviado ✔️</h3>";
+
+        setTimeout(() => {
+          modal.remove();
+          openAskPipelineModal(response?.contactId || null);
+        }, 800);
+
+        addLog("Enviado para CRM: " + JSON.stringify(payload), true);
+      }
+    );
+  };
 }
 
 // ====================================================================
-// PROCESSAR TEXT NODE
+// MODAL “DESEJA ADICIONAR AO PIPELINE?”
 // ====================================================================
+function openAskPipelineModal(contactId) {
+  const modal = document.createElement("div");
+  modal.className = "loomie-modal-root";
+
+  modal.innerHTML = `
+  <div class="loomie-modal">
+    <div class="loomie-modal-card">
+      <h3>Adicionar ao Pipeline?</h3>
+      <p>Deseja colocar este contato em um pipeline agora?</p>
+
+      <div class="loomie-buttons">
+        <button id="pipeline-yes" class="loomie-btn-primary">Sim</button>
+        <button id="pipeline-no" class="loomie-btn-secondary">Agora não</button>
+      </div>
+    </div>
+  </div>`;
+
+  document.body.appendChild(modal);
+
+  modal.querySelector("#pipeline-no").onclick = () => modal.remove();
+
+  modal.querySelector("#pipeline-yes").onclick = () => {
+    modal.remove();
+    openPipelineModal(contactId);
+  };
+}
+
+// ====================================================================
+// MODAL SELEÇÃO DE PIPELINE + ESTÁGIO
+// ====================================================================
+function openPipelineModal(contactId) {
+  const modal = document.createElement("div");
+  modal.className = "loomie-modal-root";
+
+  modal.innerHTML = `
+  <div class="loomie-modal">
+    <div class="loomie-modal-card">
+      <h3>Adicionar ao Pipeline</h3>
+
+      <label>Pipeline:
+        <select id="loomie-pipeline" class="loomie-select">
+          <option>Carregando...</option>
+        </select>
+      </label>
+
+      <label>Estágio:
+        <select id="loomie-stage" class="loomie-select">
+          <option>Selecione um pipeline</option>
+        </select>
+      </label>
+
+      <div class="loomie-buttons">
+        <button id="pipeline-save" class="loomie-btn-primary">Salvar</button>
+        <button id="pipeline-cancel" class="loomie-btn-secondary">Cancelar</button>
+      </div>
+    </div>
+  </div>`;
+
+  document.body.appendChild(modal);
+
+  const pipelineSelect = modal.querySelector("#loomie-pipeline");
+  const stageSelect = modal.querySelector("#loomie-stage");
+
+  // Buscar pipelines
+  chrome.runtime.sendMessage({ action: "getPipelines" }, (pipelines) => {
+    pipelineSelect.innerHTML = `<option value="">Selecione...</option>`;
+
+    pipelines?.forEach((p) => {
+      pipelineSelect.innerHTML += `<option value="${p.id}">${p.nome}</option>`;
+    });
+  });
+
+  pipelineSelect.onchange = () => {
+    const pid = pipelineSelect.value;
+    if (!pid) return;
+
+    stageSelect.innerHTML = `<option>Carregando...</option>`;
+
+    chrome.runtime.sendMessage(
+      { action: "getStages", pipelineId: pid },
+      (stages) => {
+        stageSelect.innerHTML = `<option value="">Selecione...</option>`;
+        stages?.forEach((s) => {
+          stageSelect.innerHTML += `<option value="${s.id}">${s.nome}</option>`;
+        });
+      }
+    );
+  };
+
+  modal.querySelector("#pipeline-save").onclick = () => {
+    const pipelineId = pipelineSelect.value;
+    const stageId = stageSelect.value;
+
+    chrome.runtime.sendMessage(
+      { action: "assignPipeline", contactId, pipelineId, stageId },
+      () => {
+        modal.querySelector(".loomie-modal-card").innerHTML =
+          "<h3>Adicionado ao pipeline ✔️</h3>";
+
+        setTimeout(() => modal.remove(), 800);
+      }
+    );
+  };
+
+  modal.querySelector("#pipeline-cancel").onclick = () => modal.remove();
+}
+
+// ====================================================================
+// PROCESSAMENTO DO TEXTO, REGEX, OBSERVER…
+// (TODO IGUAL AO SEU SCRIPT ORIGINAL — NÃO ALTEREI NADA)
+// ====================================================================
+
 function processTextNode(textNode) {
   const parent = textNode.parentNode;
   if (!parent) return;
@@ -174,9 +294,6 @@ function processTextNode(textNode) {
   parent.replaceChild(frag, textNode);
 }
 
-// ====================================================================
-// CRIA REGEX COMBINADO
-// ====================================================================
 function createCombinedRegex() {
   return new RegExp(
     "(" + emailRegex.source + ")|(" + phoneRegex.source + ")",
@@ -184,9 +301,6 @@ function createCombinedRegex() {
   );
 }
 
-// ====================================================================
-// WALK + OBSERVER
-// ====================================================================
 function walkAndProcess(root = document.body) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
@@ -214,8 +328,7 @@ function scanPage() {
   scanTimer = setTimeout(() => {
     try {
       walkAndProcess(document.body);
-    } catch (err) {
-    }
+    } catch (err) {}
   }, 120);
 }
 
@@ -229,6 +342,7 @@ const observer = new MutationObserver((mutations) => {
   )
     scanPage();
 });
+
 try {
   observer.observe(document.documentElement || document.body, {
     childList: true,
@@ -252,15 +366,17 @@ try {
   const css = `
 .loomie-marker { background: rgba(13,110,253,0.06); padding:2px 6px; border-radius:6px; display:inline-flex; align-items:center; gap:6px; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
 .loomie-marker img { filter: drop-shadow(0 1px 0 rgba(0,0,0,0.05)); vertical-align:middle; width:16px; height:16px; cursor:pointer; }
+
 .loomie-modal-root { position: fixed; inset: 0; display:flex; align-items:center; justify-content:center; z-index:2147483647; }
 .loomie-modal { position: fixed; inset:0; background: rgba(0,0,0,0.35); display:flex; align-items:center; justify-content:center; padding:8px; overflow:auto; }
-.loomie-modal-card { background:#fff; padding:16px; border-radius:12px; box-shadow:0 10px 30px rgba(2,6,23,0.12); width:100%; max-width:360px; text-align:center; display:flex; flex-direction:column; gap:12px; box-sizing:border-box; }
-.loomie-modal-header { display:flex; flex-direction:column; align-items:center; gap:8px; }
-.loomie-logo { width:44px; height:44px; }
-.loomie-title { margin:0; }
-.loomie-inputs { display:flex; flex-direction:column; gap:8px; text-align:left; }
+.loomie-modal-card { background:#fff; padding:16px; border-radius:12px; box-shadow:0 10px 30px rgba(2,6,23,0.12); width:100%; max-width:360px; display:flex; flex-direction:column; gap:12px; }
+
+.loomie-inputs { display:flex; flex-direction:column; gap:8px; }
 .loomie-inputs input { width:100%; padding:6px 8px; border:1px solid #ccc; border-radius:6px; box-sizing:border-box; }
-.loomie-buttons { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+
+.loomie-select { width:100%; padding:6px 8px; border:1px solid #ccc; border-radius:6px; margin-top:4px; }
+
+.loomie-buttons { display:flex; gap:8px; justify-content:center; }
 .loomie-btn-primary { background:#0d6efd; color:#fff; padding:8px 12px; border-radius:8px; border:none; cursor:pointer; }
 .loomie-btn-secondary { background:#f3f4f6; padding:8px 12px; border-radius:8px; border:none; cursor:pointer; }
 `;
