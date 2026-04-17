@@ -7,65 +7,96 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="popup-card">
-
-    <img src="assets/logo-loomie.png" alt="Loomie" class="logo"/>
-
-    <div class="header-row">
-      <h1 class="title">LoomieCRM</h1>
-      <div id="statusBadge" class="badge status-unknown" title="Status da conexão"></div>
-    </div>
-
-    <div class="controls">
-      <label class="label">API Key</label>
-      <div class="api-row">
-        <input id="apiKey" type="password" placeholder="Cole sua API Key" autocomplete="off" />
-        <button id="toggleKey" class="icon-btn" title="Mostrar/ocultar chave">👁️</button>
-        <button id="copyKey" class="icon-btn" title="Copiar chave">📋</button>
-      </div>
-
-      <div class="row actions-row">
-        <button id="saveBtn" class="btn primary">Salvar</button>
-        <button id="testBtn" class="btn secondary">Testar Conexão</button>
-      </div>
-
-      <div class="row small-row">
-        <button id="showLogsBtn" class="btn ghost">Ver Logs</button>
-        <button id="clearLogsBtn" class="btn ghost">Limpar Logs</button>
-        <button id="exportLogsBtn" class="btn ghost">Exportar Logs</button>
-      </div>
-
-      <div class="switch-row">
-        <label for="scanToggle" class="label small">Deteccao de e-mails/telefones</label>
-        <input id="scanToggle" type="checkbox" class="switch-input" checked />
-      </div>
-
-      <div id="statusText" class="status">Nenhuma ação ainda.</div>
-    </div>
-
-    <div id="logsArea" class="logs-area" hidden>
-      <div class="logs-controls">
-        <input id="logsFilter" class="logs-filter" placeholder="Filtrar logs (mensagem)..." />
-        <div class="filter-buttons">
-          <button data-filter="all" class="filter-btn active">Todos</button>
-          <button data-filter="ok" class="filter-btn">Sucesso</button>
-          <button data-filter="fail" class="filter-btn">Erro</button>
+  <main class="popup-shell">
+    <section class="popup-card">
+      <header class="hero">
+        <div class="brand">
+          <img src="assets/logo-loomie.png" alt="Loomie" class="logo"/>
+          <div>
+            <p class="eyebrow">Integração CRM</p>
+            <h1 class="title">LoomieCRM</h1>
+            <p class="subtitle">Capture contatos, valide a conexão e acompanhe os logs sem poluição visual.</p>
+          </div>
         </div>
-      </div>
-      <div id="logsContainer" class="logs-container"></div>
-    </div>
+        <div id="statusBadge" class="badge status-unknown" title="Status da conexão"></div>
+      </header>
 
-    <div class="theme-row">
-      <label for="themeSelect" class="label small">Tema</label>
-      <select id="themeSelect" class="theme-select" title="Tema">
-        <option value="auto">Automático</option>
-        <option value="light">Claro</option>
-        <option value="dark">Escuro</option>
-      </select>
-    </div>
+      <div id="statusText" class="status status-panel">Nenhuma ação ainda.</div>
 
-    <footer class="footer">v1 • LoomieCRM</footer>
-  </div>
+      <section class="panel">
+        <div class="section-header">
+          <h2>Credenciais</h2>
+          <span class="section-hint">Usada para testar e enviar dados ao CRM</span>
+        </div>
+
+        <label class="label" for="apiKey">API Key</label>
+        <div class="api-row">
+          <input id="apiKey" type="password" placeholder="Cole sua API Key" autocomplete="off" />
+          <button id="toggleKey" class="icon-btn" title="Mostrar/ocultar chave">👁️</button>
+          <button id="copyKey" class="icon-btn" title="Copiar chave">📋</button>
+        </div>
+
+        <div class="row actions-row">
+          <button id="saveBtn" class="btn primary">Salvar</button>
+          <button id="testBtn" class="btn secondary">Testar conexão</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-header">
+          <h2>Operação</h2>
+          <span class="section-hint">Preferências e automação da extensão</span>
+        </div>
+
+        <div class="switch-row">
+          <div>
+            <label for="scanToggle" class="label small">Detecção de e-mails/telefones</label>
+            <p class="help-text">Mostra marcadores na página para enviar contatos ao CRM.</p>
+          </div>
+          <input id="scanToggle" type="checkbox" class="switch-input" checked />
+        </div>
+
+        <div class="theme-row">
+          <div>
+            <label for="themeSelect" class="label small">Tema</label>
+            <p class="help-text">Aparência do popup.</p>
+          </div>
+          <select id="themeSelect" class="theme-select" title="Tema">
+            <option value="auto">Automático</option>
+            <option value="light">Claro</option>
+            <option value="dark">Escuro</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-header">
+          <h2>Logs</h2>
+          <span class="section-hint">Filtre, limpe ou exporte o histórico</span>
+        </div>
+
+        <div class="row small-row">
+          <button id="showLogsBtn" class="btn ghost">Ver logs</button>
+          <button id="clearLogsBtn" class="btn ghost">Limpar</button>
+          <button id="exportLogsBtn" class="btn ghost">Exportar</button>
+        </div>
+
+        <div id="logsArea" class="logs-area" hidden>
+          <div class="logs-controls">
+            <input id="logsFilter" class="logs-filter" placeholder="Filtrar logs (mensagem)..." />
+            <div class="filter-buttons">
+              <button data-filter="all" class="filter-btn active">Todos</button>
+              <button data-filter="ok" class="filter-btn">Sucesso</button>
+              <button data-filter="fail" class="filter-btn">Erro</button>
+            </div>
+          </div>
+          <div id="logsContainer" class="logs-container"></div>
+        </div>
+      </section>
+
+      <footer class="footer">v1 • LoomieCRM</footer>
+    </section>
+  </main>
 
   <script src="popup.js"></script>
 </body>
