@@ -5,7 +5,18 @@ console.log("[SW] LoomieCRM service worker iniciado");
 // ====================================================================
 
 function addLog(msg) {
-  console.log("[LoomieCRM API.JS]", msg);
+  const line = String(msg);
+  console.log("[LoomieCRM API.JS]", line);
+  try {
+    chrome.storage.local.get(["loomie_logs"], (data) => {
+      const arr = data.loomie_logs || [];
+      arr.unshift({ message: line, timestamp: Date.now(), ok: !line.includes("Falha") && !line.includes("Erro") });
+      if (arr.length > 500) arr.length = 500;
+      chrome.storage.local.set({ loomie_logs: arr });
+    });
+  } catch (e) {
+    // ignore storage failures in background logs
+  }
 }
 
 function detectType(value) {
@@ -33,7 +44,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // ================================================================
   if (msg.action === "sendData") {
     chrome.storage.sync.get(["loomie_api_key"], async (data) => {
-      console.log("API Key:", data.loomie_api_key);
       const key = data.loomie_api_key;
       const payload = msg.payload;
 
@@ -171,19 +181,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           return null;
         });
 
-        console.log(
-          "[DEBUG] getPipelines - JSON retornado:",
-          pipelines.results
-        );
+        const results = Array.isArray(pipelines?.results) ? pipelines.results : [];
+        console.log("[DEBUG] getPipelines - Total:", results.length);
 
-        if (!Array.isArray(pipelines.results)) {
+        if (!results.length) {
           console.warn(
-            "[DEBUG] getPipelines - JSON não é array, retornando vazio"
+            "[DEBUG] getPipelines - lista vazia ou formato inesperado"
           );
-          pipelines = [];
         }
 
-        sendResponse(pipelines.results);
+        sendResponse(results);
       } catch (err) {
         console.error("[DEBUG] getPipelines - Erro de rede:", err);
         sendResponse([]);
@@ -233,16 +240,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           return null;
         });
 
-        console.log("[DEBUG] getStages - JSON retornado:", stages.results);
+        const results = Array.isArray(stages?.results) ? stages.results : [];
+        console.log("[DEBUG] getStages - Total:", results.length);
 
-        if (!Array.isArray(stages.results)) {
+        if (!results.length) {
           console.warn(
-            "[DEBUG] getStages - JSON não é array, retornando vazio"
+            "[DEBUG] getStages - lista vazia ou formato inesperado"
           );
-          stages = [];
         }
 
-        sendResponse(stages.results);
+        sendResponse(results);
       } catch (err) {
         console.error("[DEBUG] getStages - Erro de rede:", err);
         sendResponse([]);
@@ -306,6 +313,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     chrome.storage.sync.get(["loomie_api_key"], async (data) => {
       const key = data.loomie_api_key;
       const { pipelineId, stageId, contactId, titulo, valor } = msg.payload;
+      const normalizedValue = Number.isFinite(Number(valor)) ? Number(valor) : 0;
 
       if (!key || !pipelineId || !stageId || !contactId || !titulo) {
         addLog("[DEBUG] createDeal - dados insuficientes");
@@ -329,7 +337,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               estagio_id: stageId,
               contato_id: contactId,
               titulo,
-              valor,
+              valor: normalizedValue,
             }),
           }
         );

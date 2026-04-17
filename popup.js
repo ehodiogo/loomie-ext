@@ -7,6 +7,7 @@ const saveBtn = document.getElementById("saveBtn");
 const testBtn = document.getElementById("testBtn");
 const showLogsBtn = document.getElementById("showLogsBtn");
 const clearLogsBtn = document.getElementById("clearLogsBtn");
+const exportLogsBtn = document.getElementById("exportLogsBtn");
 const statusText = document.getElementById("statusText");
 const statusBadge = document.getElementById("statusBadge");
 const logsArea = document.getElementById("logsArea");
@@ -14,9 +15,43 @@ const logsContainer = document.getElementById("logsContainer");
 const logsFilter = document.getElementById("logsFilter");
 const filterBtns = document.querySelectorAll(".filter-btn");
 const themeSelect = document.getElementById("themeSelect");
+const scanToggle = document.getElementById("scanToggle");
 
 let currentLogs = [];
 let activeFilter = "all";
+
+function injectContentScriptInActiveTab() {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const tab = tabs?.[0];
+    if (!tab?.id) {
+      setStatus("Nao foi possivel identificar a aba ativa.");
+      return;
+    }
+
+    chrome.scripting.executeScript(
+      {
+        target: { tabId: tab.id },
+        files: ["content.js"],
+      },
+      () => {
+        if (chrome.runtime.lastError) {
+          setStatus("Esta pagina nao permite execucao da extensao.");
+          return;
+        }
+        setStatus("Extensao ativada nesta aba.");
+      }
+    );
+  });
+}
+
+function setBusy(button, busy, labelWhenBusy) {
+  if (!button) return;
+  if (!button.dataset.originalLabel) {
+    button.dataset.originalLabel = button.textContent;
+  }
+  button.disabled = !!busy;
+  button.textContent = busy ? labelWhenBusy : button.dataset.originalLabel;
+}
 
 // ---------- Helpers ----------
 function setStatus(text) {
@@ -57,15 +92,21 @@ function saveLog(message, ok = true) {
 }
 
 // ---------- Init: load stored api key + theme ----------
-chrome.storage.sync.get(["loomie_api_key", "loomie_theme"], (data) => {
+injectContentScriptInActiveTab();
+
+chrome.storage.sync.get(
+  ["loomie_api_key", "loomie_theme", "loomie_detection_enabled"],
+  (data) => {
   if (data.loomie_api_key) apiKeyEl.value = data.loomie_api_key;
+  scanToggle.checked = data.loomie_detection_enabled !== false;
 
   const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   const theme = data.loomie_theme || "auto";
   themeSelect.value = theme;
-  if (theme === "auto") applyTheme(systemDark ? "dark" : "light");
-  else applyTheme(theme);
-});
+    if (theme === "auto") applyTheme(systemDark ? "dark" : "light");
+    else applyTheme(theme);
+  }
+);
 
 // ---------- Theme ----------
 function applyTheme(mode) {
@@ -86,7 +127,9 @@ themeSelect.addEventListener("change", () => {
 saveBtn.addEventListener("click", () => {
   const key = (apiKeyEl.value || "").trim();
   if (!key) return setStatus("Digite uma API Key válida.");
+  setBusy(saveBtn, true, "Salvando...");
   chrome.storage.sync.set({ loomie_api_key: key }, () => {
+    setBusy(saveBtn, false);
     setStatus("API Key salva");
     saveLog("API Key salva", true);
   });
@@ -95,6 +138,7 @@ saveBtn.addEventListener("click", () => {
 // ---------- Copy / Toggle visible ----------
 copyKeyBtn.addEventListener("click", async () => {
   try {
+    if (!apiKeyEl.value) return setStatus("Nao ha API Key para copiar.");
     await navigator.clipboard.writeText(apiKeyEl.value || "");
     setStatus("API Key copiada");
   } catch (e) {
@@ -109,7 +153,9 @@ toggleKeyBtn.addEventListener("click", () => {
 testBtn.addEventListener("click", () => {
   setStatus("Testando conexão...");
   setBadge("status-unknown", "Testando...");
+  setBusy(testBtn, true, "Testando...");
   chrome.runtime.sendMessage({ action: "testKey" }, (resp) => {
+    setBusy(testBtn, false);
     if (chrome.runtime.lastError) {
       setStatus("Erro: " + chrome.runtime.lastError.message);
       setBadge("status-fail", "Erro");
@@ -141,9 +187,9 @@ testBtn.addEventListener("click", () => {
 showLogsBtn.addEventListener("click", () => {
   chrome.storage.local.get(["loomie_logs"], (data) => {
     currentLogs = data.loomie_logs || [];
-    if (!currentLogs.length) return setStatus("Nenhum log disponível.");
     logsArea.hidden = !logsArea.hidden;
     renderLogs();
+    if (!currentLogs.length) setStatus("Nenhum log disponível.");
   });
 });
 
@@ -152,6 +198,38 @@ clearLogsBtn.addEventListener("click", () => {
     currentLogs = [];
     renderLogs();
     setStatus("Logs limpos");
+  });
+});
+
+exportLogsBtn.addEventListener("click", () => {
+  chrome.storage.local.get(["loomie_logs"], (data) => {
+    const logs = data.loomie_logs || [];
+    if (!logs.length) return setStatus("Nenhum log para exportar.");
+
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      total: logs.length,
+      logs,
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `loomie-logs-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setStatus("Logs exportados com sucesso.");
+  });
+});
+
+scanToggle.addEventListener("change", () => {
+  const enabled = !!scanToggle.checked;
+  chrome.storage.sync.set({ loomie_detection_enabled: enabled }, () => {
+    setStatus(enabled ? "Deteccao ativada." : "Deteccao pausada.");
+    saveLog(enabled ? "Deteccao ativada" : "Deteccao pausada", true);
   });
 });
 
@@ -190,6 +268,21 @@ function renderLogs() {
     logsContainer.appendChild(el);
   }
 }
+
+apiKeyEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    saveBtn.click();
+  }
+});
+
+document.addEventListener("keydown", (e) => {
+  const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+  if (isCmdOrCtrl && e.key.toLowerCase() === "enter") {
+    e.preventDefault();
+    testBtn.click();
+  }
+});
 
 // ensure initial badge legible
 setTimeout(() => setBadge("status-unknown", "Indefinido"), 50);

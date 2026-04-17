@@ -1,10 +1,16 @@
 // ====================================================================
 // REGEXs
 // ====================================================================
+if (window.__loomieContentScriptLoaded) {
+  console.log("[LoomieCRM CONTENT.JS] ja injetado nesta aba");
+} else {
+  window.__loomieContentScriptLoaded = true;
+
 const emailRegex =
   /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})*/;
 const phoneRegex =
   /(?:\+?\d{1,3}[\s-]?)?(?:\(?\d{2,3}\)?[\s-]?)?\d{4,5}[\s-]?\d{4}/;
+const MIN_PHONE_DIGITS = 10;
 
 // ====================================================================
 // UTILITÁRIAS
@@ -37,6 +43,15 @@ function detectType(value) {
   return "phone";
 }
 
+function normalizePhone(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function isLikelyPhone(value) {
+  const digits = normalizePhone(value);
+  return digits.length >= MIN_PHONE_DIGITS;
+}
+
 // ====================================================================
 // MARCADOR LOGO
 // ====================================================================
@@ -44,6 +59,7 @@ function createLogoMarker(value) {
   const span = document.createElement("span");
   span.className = "loomie-marker";
   span.dataset.loomieValue = value;
+  span.title = "Enviar para LoomieCRM";
   span.style.display = "inline-flex";
   span.style.alignItems = "center";
   span.style.gap = "6px";
@@ -102,6 +118,33 @@ function openConfirmModal(value) {
         <label>Telefone: <input type="tel" id="loomie-phone" placeholder="Telefone" value="${escapeHtml(
           phoneVal
         )}"></label>
+
+        <label class="loomie-check">
+          <input type="checkbox" id="loomie-create-deal-toggle">
+          Criar negocio agora neste contato
+        </label>
+
+        <div id="loomie-deal-fields" style="display:none;">
+          <label>Pipeline:
+            <select id="loomie-pipeline" class="loomie-select">
+              <option value="">Selecione...</option>
+            </select>
+          </label>
+
+          <label>Estagio:
+            <select id="loomie-stage" class="loomie-select">
+              <option value="">Selecione um pipeline</option>
+            </select>
+          </label>
+
+          <label>Titulo do Negocio:
+            <input type="text" id="deal-title" placeholder="Ex: Proposta inicial">
+          </label>
+
+          <label>Valor do Negocio:
+            <input type="number" id="deal-value" placeholder="1000">
+          </label>
+        </div>
       </div>
 
       <div class="loomie-buttons">
@@ -113,22 +156,150 @@ function openConfirmModal(value) {
 
   document.body.appendChild(modal);
 
-  modal.querySelector("#loomie-cancel").onclick = () => modal.remove();
+  const createDealToggle = modal.querySelector("#loomie-create-deal-toggle");
+  const dealFields = modal.querySelector("#loomie-deal-fields");
+  const pipelineSelect = modal.querySelector("#loomie-pipeline");
+  const stageSelect = modal.querySelector("#loomie-stage");
+  const dealTitleInput = modal.querySelector("#deal-title");
+  const dealValueInput = modal.querySelector("#deal-value");
+  let pipelinesLoaded = false;
+
+  function loadPipelines() {
+    if (pipelinesLoaded) return;
+    pipelinesLoaded = true;
+
+    pipelineSelect.innerHTML = `<option value="">Carregando...</option>`;
+
+    chrome.runtime.sendMessage({ action: "getPipelines" }, (pipelines) => {
+      pipelineSelect.innerHTML = `<option value="">Selecione...</option>`;
+      (pipelines || []).forEach((p) => {
+        pipelineSelect.innerHTML += `<option value="${p.id}">${p.nome}</option>`;
+      });
+    });
+  }
+
+  createDealToggle?.addEventListener("change", () => {
+    const enabled = !!createDealToggle.checked;
+    dealFields.style.display = enabled ? "block" : "none";
+    if (enabled) loadPipelines();
+  });
+
+  pipelineSelect?.addEventListener("change", () => {
+    const pid = pipelineSelect.value;
+    if (!pid) {
+      stageSelect.innerHTML = `<option value="">Selecione um pipeline</option>`;
+      return;
+    }
+
+    stageSelect.innerHTML = `<option value="">Carregando...</option>`;
+
+    chrome.runtime.sendMessage(
+      { action: "getStages", pipelineId: pid },
+      (stages) => {
+        stageSelect.innerHTML = `<option value="">Selecione...</option>`;
+        (stages || []).forEach((s) => {
+          stageSelect.innerHTML += `<option value="${s.id}">${s.nome}</option>`;
+        });
+      }
+    );
+  });
+
+  const onEscape = (ev) => {
+    if (ev.key === "Escape") {
+      modal.remove();
+      document.removeEventListener("keydown", onEscape);
+    }
+  };
+  document.addEventListener("keydown", onEscape);
+
+  const overlay = modal.querySelector(".loomie-modal");
+  overlay?.addEventListener("click", (ev) => {
+    if (ev.target === overlay) {
+      modal.remove();
+      document.removeEventListener("keydown", onEscape);
+    }
+  });
+
+  modal.querySelector("#loomie-cancel").onclick = () => {
+    modal.remove();
+    document.removeEventListener("keydown", onEscape);
+  };
 
   modal.querySelector("#loomie-send").onclick = () => {
+    const sendBtn = modal.querySelector("#loomie-send");
     const name = modal.querySelector("#loomie-name").value.trim();
     const email = modal.querySelector("#loomie-email").value.trim();
     const phone = modal.querySelector("#loomie-phone").value.trim();
+    const shouldCreateDeal = !!createDealToggle?.checked;
+    const pipelineId = pipelineSelect?.value || "";
+    const stageId = stageSelect?.value || "";
+    const dealTitle = dealTitleInput?.value?.trim() || "";
+    const dealValue = parseFloat(dealValueInput?.value || 0);
+
+    if (!name && !email && !phone) {
+      return addLog("Preencha ao menos um campo antes de enviar", false);
+    }
+    if (email && !emailRegex.test(email)) {
+      return addLog("Email invalido", false);
+    }
+    if (phone && !isLikelyPhone(phone)) {
+      return addLog("Telefone invalido", false);
+    }
+    if (shouldCreateDeal && !pipelineId) {
+      return addLog("Selecione um pipeline para criar o negocio", false);
+    }
+    if (shouldCreateDeal && !stageId) {
+      return addLog("Selecione um estagio para criar o negocio", false);
+    }
+    if (shouldCreateDeal && !dealTitle) {
+      return addLog("Informe o titulo do negocio", false);
+    }
 
     const payload = { nome: name, email, telefone: phone };
+    sendBtn.disabled = true;
+    sendBtn.textContent = "Enviando...";
 
     chrome.runtime.sendMessage({ action: "sendData", payload }, (response) => {
-      if (response?.ok) {
+      if (response?.ok && shouldCreateDeal && response?.id) {
+        const dealPayload = {
+          pipelineId,
+          stageId,
+          contactId: response.id,
+          titulo: dealTitle,
+          valor: Number.isFinite(dealValue) ? dealValue : 0,
+        };
+
+        chrome.runtime.sendMessage(
+          { action: "createDeal", payload: dealPayload },
+          (resDeal) => {
+            if (resDeal?.ok) {
+              modal.querySelector(".loomie-modal-card").innerHTML =
+                "<h3>Contato e negocio criados ✔️</h3>";
+            } else {
+              modal.querySelector(
+                ".loomie-modal-card"
+              ).innerHTML = `<h3>Contato criado, mas falhou ao criar negocio ❌</h3><p>${
+                resDeal?.message || ""
+              }</p>`;
+              addLog(
+                "Contato criado, mas falha ao criar negocio: " +
+                  (resDeal?.message || "erro desconhecido"),
+                false
+              );
+            }
+
+            setTimeout(() => {
+              modal.remove();
+              document.removeEventListener("keydown", onEscape);
+            }, 1200);
+          }
+        );
+      } else if (response?.ok) {
         modal.querySelector(".loomie-modal-card").innerHTML =
           "<h3>Enviado ✔️</h3>";
         setTimeout(() => {
           modal.remove();
-          openAskPipelineModal(response?.id || null);
+          document.removeEventListener("keydown", onEscape);
         }, 800);
         addLog("Enviado para CRM: " + JSON.stringify(payload), true);
         addLog("Resposta: " + JSON.stringify(response), true);
@@ -314,6 +485,7 @@ function processTextNode(textNode) {
 
   const text = textNode.nodeValue;
   if (!text?.trim()) return;
+  if (text.length > 3000) return;
 
   const combined = createCombinedRegex();
   combined.lastIndex = 0;
@@ -325,6 +497,11 @@ function processTextNode(textNode) {
   while ((m = combined.exec(text)) !== null) {
     const matchStart = m.index;
     const matchText = m[0];
+    const type = detectType(matchText);
+    if (type === "phone" && !isLikelyPhone(matchText)) {
+      if (combined.lastIndex === matchStart) combined.lastIndex++;
+      continue;
+    }
     if (matchStart > lastIndex)
       frag.appendChild(
         document.createTextNode(text.slice(lastIndex, matchStart))
@@ -369,8 +546,11 @@ function walkAndProcess(root = document.body) {
   nodes.forEach(processTextNode);
 }
 
+let scannerEnabled = true;
+
 let scanTimer = null;
 function scanPage() {
+  if (!scannerEnabled) return;
   clearTimeout(scanTimer);
   scanTimer = setTimeout(() => {
     try {
@@ -380,6 +560,7 @@ function scanPage() {
 }
 
 const observer = new MutationObserver((mutations) => {
+  if (!scannerEnabled) return;
   if (
     mutations.some(
       (m) =>
@@ -438,3 +619,15 @@ try {
 if (document.readyState === "loading")
   window.addEventListener("DOMContentLoaded", scanPage);
 else scanPage();
+
+chrome.storage.sync.get(["loomie_detection_enabled"], (data) => {
+  scannerEnabled = data.loomie_detection_enabled !== false;
+  if (scannerEnabled) scanPage();
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "sync" || !changes.loomie_detection_enabled) return;
+  scannerEnabled = changes.loomie_detection_enabled.newValue !== false;
+  if (scannerEnabled) scanPage();
+});
+}
